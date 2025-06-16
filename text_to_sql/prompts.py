@@ -1,35 +1,20 @@
-def get_sql_generation_prompt(user_query: str, db_schema: str, dialect: str) -> str:
-    """
-    Gera o prompt completo para o LLM converter uma pergunta em linguagem natural para SQL.
 
-    Args:
-        user_query (str): A pergunta do usuário em linguagem natural.
-        db_schema (str): A representação formatada do esquema do banco de dados.
-        dialect (str): O dialeto SQL desejado (ex: "MySQL" ou "PostgreSQL").
-
-    Returns:
-        str: O prompt completo para o LLM.
-    """
-    # É importante instruir o LLM sobre o dialeto SQL e o formato de saída desejado.
-    # Também pedimos para ele explicar a query, o que pode ser útil para depuração e aprendizado.
-    prompt = f"""
-Você é um assistente de inteligência artificial especializado em converter perguntas em linguagem natural para queries SQL.
-Você deve gerar apenas a query SQL, sem nenhuma explicação adicional, texto introdutório ou conclusivo.
-Use o esquema de banco de dados fornecido para construir a query.
-Certifique-se de que a query seja sintaticamente correta e semanticamente coerente com a pergunta e o esquema.
-Se a pergunta exigir agregações ou condições complexas, tente gerar a query mais precisa possível.
-SEMPRE utilize o dialeto SQL para {dialect}.
-
-Esquema do Banco de Dados:
-{db_schema}
-
-Instruções:
-- A query SQL gerada deve ser para o banco de dados {dialect}.
-- Não inclua blocos de código ou ```sql``` ao redor da query. Apenas a query SQL pura.
-- Não inclua semicolons (;) no final da query.
-
-Pergunta em Linguagem Natural: "{user_query}"
-
-Query SQL:
-"""
-    return prompt
+def get_sql_generation_prompt(user_query: str, db_schema_xml: str, dialect: str) -> str:
+    return f"""<prompt>
+  <role>You are an SQL expert.</role>
+  <goal>Return only the raw SQL query that correctly answers the user's question.</goal>
+  <instructions>
+    - Use only the database schema provided below.
+    - Use table and column names **exactly as written** in the schema. Do not rename, reformat, or assume missing parts.
+    - Do not generate or reference any tables or columns that do not exist in the schema.
+    - If the question asks for non-existent data, return a syntactically valid query that does not fail (e.g., SELECT NULL or use LIMIT 0).
+    - The response **must contain only the SQL query**—no explanations, no markdown, no formatting, no introductory or trailing text.
+    - Ensure the SQL query is valid in the {dialect} dialect.
+  </instructions>
+  <input>
+    <dialect>{dialect}</dialect>
+    {db_schema_xml}
+    <user_question>{user_query}</user_question>
+  </input>
+  <output>SQL only</output>
+</prompt>"""

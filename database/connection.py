@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from dotenv import load_dotenv
 import os
 import pandas as pd
@@ -7,10 +8,6 @@ import pandas as pd
 load_dotenv()
 
 def get_mysql_engine() -> Engine:
-    """
-    Cria e retorna uma engine SQLAlchemy para conexão MySQL.
-    As credenciais são carregadas do arquivo .env.
-    """
     user = os.getenv("MYSQL_USER")
     password = os.getenv("MYSQL_PASSWORD")
     host = os.getenv("MYSQL_HOST")
@@ -20,7 +17,6 @@ def get_mysql_engine() -> Engine:
     if not all([user, password, host, port, db]):
         raise ValueError("faltou info no .env mysql")
 
-    # mysql+mysqlconnector://user:password@host:port/database
     connection_string = f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/{db}"
     return create_engine(connection_string)
 
@@ -37,35 +33,30 @@ def get_postgresql_engine() -> Engine:
     connection_string = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
     return create_engine(connection_string)
 
-def test_connection(engine: Engine):
+def get_db_engine(db_type: str) -> Engine:
+    db_type_upper = db_type.upper()
+    if db_type_upper == "MYSQL":
+        return get_mysql_engine()
+    elif db_type_upper == "POSTGRESQL":
+        return get_postgresql_engine()
+    else:
+        raise ValueError(f"Tipo de banco de dados inválido no .env: '{db_type}'. Use 'MYSQL' ou 'POSTGRESQL'.")
 
+def test_connection(engine: Engine):
     try:
         with engine.connect() as connection:
-
-            result = connection.execute(text("SELECT 1")) #select true, só da errado se nao carregou a db
+            connection.execute(text("SELECT 1"))
             print(f"{engine.url.database} conectado")
             return True
-    except Exception as e:
+    except OperationalError as e:
         print(f"FALHA EM {engine.url.database}: {e}")
+        print("Verifique se o banco de dados está rodando e as credenciais estão corretas no .env.")
+        return False
+    except Exception as e:
+        print(f"ERRO INESPERADO AO TESTAR CONEXÃO COM {engine.url.database}: {e}")
         return False
 
-
-
-#comentarios oxygen
-def execute_query(engine, query, fetch_results=True):
-    """
-    Executa uma query SQL no banco de dados e retorna os resultados em um DataFrame do Pandas,
-    ou None para queries que não retornam resultados (ex: INSERT, UPDATE, DELETE).
-
-    Args:
-        engine (Engine): A engine SQLAlchemy para o banco de dados (obtida de get_mysql_engine() ou get_postgresql_engine()).
-        query (str): A string da query SQL a ser executada.
-        fetch_results (bool): Se True, tenta buscar os resultados (para SELECT).
-                              Se False, apenas executa (para INSERT/UPDATE/DELETE).
-
-    Returns:
-        pd.DataFrame | None: Um DataFrame do Pandas com os resultados da query, ou None.
-    """
+def execute_query(engine: Engine, query: str, fetch_results: bool = True) -> pd.DataFrame | str | None:
     try:
         with engine.connect() as connection:
             with connection.begin():
@@ -74,30 +65,42 @@ def execute_query(engine, query, fetch_results=True):
                     print(f"Querry -> {len(df)}")
                     return df
                 else:
-                    # Para queries que modificam o banco (INSERT, UPDATE, DELETE, CREATE, DROP)
-                    result = connection.execute(text(query)) # Usa text() para consultas não-parâmetros
-                    print(f"Alteração feita: {result.rowcount}")
-                    return None
-    except Exception as e:
+                    result = connection.execute(text(query))
+                    if result.rowcount is not None:
+                        print(f"Alteração feita: {result.rowcount}")
+                        return f"Query executada com sucesso. Linhas afetadas: {result.rowcount}"
+                    else:
+                        print("Query de modificação executada com sucesso (linhas afetadas não aplicáveis/retornadas).")
+                        return "Query de modificação executada com sucesso."
+    except ProgrammingError as e:
         print(f"Erro em query {e}")
+        print(f"Query -> {query}")
+        return None
+    except Exception as e:
+        print(f"Erro inesperado ao executar query: {e}")
         print(f"Query -> {query}")
         return None
 
 
-
 if __name__ == "__main__":
+    print("--- Testando Conexões de Banco de Dados ---")
+
+    db_type_mysql = "MYSQL"
     try:
-        mysql_engine = get_mysql_engine()
-        test_connection(mysql_engine)
+        mysql_engine_test = get_db_engine(db_type_mysql)
+        test_connection(mysql_engine_test)
     except ValueError as e:
-        print(f"Erro MySQL: {e}")
+        print(f"Erro de configuração MySQL: {e}")
     except Exception as e:
         print(f"Erro na engine MySQL: {e}")
+    print("----------------------------------------")
 
+    db_type_pgsql = "POSTGRESQL"
     try:
-        pgsql_engine = get_postgresql_engine()
-        test_connection(pgsql_engine)
+        pgsql_engine_test = get_db_engine(db_type_pgsql)
+        test_connection(pgsql_engine_test)
     except ValueError as e:
-        print(f"Erro PostgreSQL: {e}")
+        print(f"Erro de configuração PostgreSQL: {e}")
     except Exception as e:
         print(f"Erro na engine PostgreSQL: {e}")
+    print("----------------------------------------")

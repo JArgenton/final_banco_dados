@@ -1,131 +1,110 @@
+from sqlalchemy import create_engine, inspect, MetaData, Table, Column, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 import os
 from dotenv import load_dotenv
 import re
-import requests 
-import json     
+import json 
+import pandas as pd 
+import google.generativeai as genai 
+import requests
+from typing import Dict, List
 
-from .prompts import get_sql_generation_prompt
+from database.connection import get_db_engine, test_connection, execute_query
+from database.schema import get_database_schema, format_schema_for_llm
+from text_to_sql.prompts import get_sql_generation_prompt
 
 load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+gemini_ready = False
+
+OLLAMA_API_BASE_URL = os.getenv("OLLAMA_API_BASE_URL")
+OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME") 
 ollama_ready = False
-OLLAMA_API_BASE_URL = os.getenv("OLLAMA_API_BASE_URL", "http://localhost:11434/api")
-OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "codellama") 
 
-try:
-
-    response = requests.get(f"{OLLAMA_API_BASE_URL}/tags", timeout=5) # Timeout para não travar
-    response.raise_for_status()
-    available_models = [m['name'].split(':')[0] for m in response.json().get('models', [])]
-    if OLLAMA_MODEL_NAME not in available_models:
-        print(f"Aviso: O modelo '{OLLAMA_MODEL_NAME}' não parece estar disponível no ollama local.")
-        print(f"Modelos disponíveis: {', '.join(available_models) if available_models else 'Nenhum'}")
-        print("Certifique-se de ter baixado o modelo com 'ollama run <nome_do_modelo>'")
-    else:
+llm_provider = os.getenv("LLM").upper() 
+if llm_provider == "GEMINI":
+    print("USANDO GEMINI")
+    try:
+        if not GEMINI_API_KEY:
+            raise ValueError(".env nao tem GEMINI_API_KEY")
+        
+        genai.configure(api_key=GEMINI_API_KEY)
+        transport="rest", 
+        client_options={"api_endpoint": "generativelanguage.googleapis.com"}
+        list(genai.list_models()) 
+        gemini_ready = True
+        print(f"Gemini OK")
+    except Exception as e:
+        gemini_ready = False
+        print(f"Erro Gemini: Não foi possível conectar {e}")
+        exit(1) 
+elif llm_provider == "OLLAMA":
+    print("USANDO OLLAMA")
+    try:
+        response = requests.get(f"{OLLAMA_API_BASE_URL}/tags", timeout=5)
+        response.raise_for_status()
         ollama_ready = True
-        print(f"ollama cliente conectado e modelo '{OLLAMA_MODEL_NAME}' detectado.")
-except requests.exceptions.ConnectionError:
-    print(f"Erro: Não foi possível conectar ao ollama na URL '{OLLAMA_API_BASE_URL}'.")
-    print("Certifique-se de que o aplicativo ollama está rodando em segundo plano.")
-except Exception as e:
-    print(f"Erro inesperado ao verificar o ollama: {e}")
-
-def convert_natural_language_to_sql(
-    user_query: str,
-    db_schema: str,
-    dialect: str = "MySQL"
-) -> str | None:
-    """
-    Converte uma pergunta em linguagem natural para uma query SQL usando o LLM Llama via ollama.
-
-    Args:
-        user_query (str): A pergunta do usuário em linguagem natural.
-        db_schema (str): O esquema do banco de dados formatado (obtido de schema_inspector.py).
-        dialect (str): O dialeto SQL do banco de dados (ex: "MySQL", "PostgreSQL").
-
-    Returns:
-        str | None: A query SQL gerada ou None se houver um erro.
-    """
-    if not ollama_ready:
-        print("ollama não está pronto ou conectado. Não é possível gerar SQL.")
-        return None
-
-    full_prompt = get_sql_generation_prompt(user_query, db_schema, dialect)
-
-    try:
-        # Payload para a API de geração do ollama
-        payload = {
-            "model": OLLAMA_MODEL_NAME,
-            "prompt": full_prompt,
-            "stream": False, # Queremos a resposta completa de uma vez
-            "options": {
-                "temperature": 0.1,    # Torna a saída mais determinística
-                "num_predict": 500     # Max tokens para a saída
-            }
-        }
-        
-        # Envia a requisição POST para a API local do ollama
-        headers = {'Content-Type': 'application/json'}
-        response = requests.post(f"{OLLAMA_API_BASE_URL}/generate", headers=headers, data=json.dumps(payload))
-        response.raise_for_status() # Lança um erro para status de erro (4xx ou 5xx)
-        
-        response_data = response.json()
-        sql_query = response_data.get('response', '').strip()
-
-        # Limpeza adicional: O LLM pode adicionar ```sql``` ou ;. Removemos para query pura.
-        sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
-        sql_query = re.sub(r";\s*$", "", sql_query) # Remove ';' no final da string
-
-        print(f"SQL Gerado:\n{sql_query}")
-        return sql_query
-
-    except requests.exceptions.RequestException as e:
-        print(f"Erro de rede ou na API do ollama: {e}")
-        print(f"Resposta do ollama: {response.text if 'response' in locals() else 'N/A'}")
-        return None
+        print(f"Ollama OK - {OLLAMA_MODEL_NAME}")
     except Exception as e:
-        print(f"Erro inesperado ao chamar o ollama ou processar resposta: {e}")
-        return None
+        ollama_ready = False
+        print(f"Erro Ollama: Não foi possível conectar {e}")
+        exit(1)
+else:
+    print(f"Erro: LLM '{llm_provider}' inválido no .env.")
+    exit(1)
 
-# --- Teste de funcionalidade (opcional) ---
-if __name__ == "__main__":
-    from database.schema import get_database_schema, format_schema_for_llm
-    from database.connection import get_mysql_engine, test_connection
+def convert_natural_language_to_sql(user_query: str, db_schema: str, dialect: str = "MySQL") -> str | None:
+    if llm_provider == "GEMINI":
+        if not gemini_ready:
+            print("ERRO GEMINI")
+            return None
+        full_prompt = get_sql_generation_prompt(user_query, db_schema, dialect)
+        try:
+            model = genai.GenerativeModel('models/gemini-2.0-flash-lite') 
+            response = model.generate_content(full_prompt,generation_config=genai.GenerationConfig(temperature=0.1, max_output_tokens=500))
+
+            sql_query = response.text.strip()
+
+            sql_query = re.sub(r"```sql|```|;\s*$", "", sql_query, flags=re.IGNORECASE).strip()
+
+            print(f"SQL Gerado (Gemini):\n{sql_query}")
+
+            return sql_query
+        except Exception as e:
+            print(f"Erro ao chamar o Gemini {e}")
+            return None
     
-    mysql_engine = None
-    try:
-        mysql_engine = get_mysql_engine()
-        if not test_connection(mysql_engine):
-            mysql_engine = None
-    except ValueError as e:
-        print(f"Erro de configuração MySQL: {e}")
-    except Exception as e:
-        print(f"Erro inesperado ao criar engine MySQL: {e}")
+    elif llm_provider == "OLLAMA":
+        if not ollama_ready:
+            print("ERRO OLLAMA")
+            return None
+        full_prompt = get_sql_generation_prompt(user_query, db_schema, dialect)
+        try:
+            payload = {
+                "model": OLLAMA_MODEL_NAME,
+                "prompt": full_prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": 500
+                }
+            }
+            headers = {'Content-Type': 'application/json'}
+            response = requests.post(f"{OLLAMA_API_BASE_URL}/generate", headers=headers, data=json.dumps(payload))
+            response.raise_for_status() 
+            sql_query = response.json().get('response', '').strip()
+            sql_query = re.sub(r"```sql|```|;\s*$", "", sql_query, flags=re.IGNORECASE).strip()
 
-    if mysql_engine:
-        db_schema_dict = get_database_schema(mysql_engine)
-        if db_schema_dict:
-            db_schema_str = format_schema_for_llm(db_schema_dict)
-            print("\nEsquema do Banco de Dados para o LLM:")
-            print(db_schema_str)
+            print(f"SQL Gerado (Qwen/Ollama):\n{sql_query}")
 
-            user_question = "qual o nome de todos os alunos do professor Einstein?"
+            return sql_query
+        except requests.exceptions.RequestException as e:
 
-            print(f"\nPergunta do Usuário: '{user_question}'")
-            generated_sql = convert_natural_language_to_sql(user_question, db_schema_str, "MySQL")
-
-            if generated_sql:
-                print(f"\nSQL Gerado pelo LLM via ollama:\n{generated_sql}")
-                # Opcional: Executar a query gerada para ver os resultados
-                # from ..database.connection import execute_query # Importe se precisar
-                # results_df = execute_query(mysql_engine, generated_sql)
-                # if results_df is not None:
-                #     print("\nResultados da Query Executada:")
-                #     print(results_df)
-            else:
-                print("\nFalha ao gerar SQL.")
-        else:
-            print("Não foi possível obter o esquema do MySQL para teste.")
-    else:
-        print("Não foi possível conectar ao MySQL para teste de LLM.")
-
-    print("\n--- Fim do Teste de Conversão ---")
+            print(f"Erro (Ollama): Falha na comunicação com Ollama: {e}")
+            return None
+        except Exception as e:
+            print(f"Erro Ollama: Ocorreu um problema ao gerar SQL. {e}")
+            return None
+    
+    return None
