@@ -1,0 +1,126 @@
+EXEMPLO 1, usando gemini e mysql com a tabela tpch:
+
+pergunta (ou 'sair' para encerrar): Quais são os 10 clientes com maior saldo na conta?
+
+Pergunta: Quais são os 10 clientes com maior saldo na conta?
+SQL Gerado (Gemini):
+SELECT
+  c_custkey,
+  c_name,
+  c_acctbal
+FROM customer
+ORDER BY
+  c_acctbal DESC
+LIMIT 10;
+
+SQL Gerado pelo LLM:
+SELECT
+  c_custkey,
+  c_name,
+  c_acctbal
+FROM customer
+ORDER BY
+  c_acctbal DESC
+LIMIT 10;
+
+Executando query
+----------------------------------------------------------------------------
+Querry -> 10
+
+Resultados da Query Executada:
+   c_custkey              c_name  c_acctbal
+0      61453  Customer#000061453    9999.99
+1      69321  Customer#000069321    9999.96
+2     144232  Customer#000144232    9999.74
+3       2487  Customer#000002487    9999.72
+4      23828  Customer#000023828    9999.64
+5     129934  Customer#000129934    9999.59
+6      43044  Customer#000043044    9999.49
+7      63655  Customer#000063655    9999.47
+8      15980  Customer#000015980    9999.23
+9      76146  Customer#000076146    9999.23
+
+/*--------------------------------------------------------------------------------*\
+
+EXEMPLO 2, mesma configuração, fluxo completo do programa:
+
+python3.10 main.py (para executar o programa)
+
+USANDO GEMINI
+Gemini OK
+----------------------------------------------------------------------------
+TEXT TO SQL
+tpch conectado
+Conectado com engine tpch (MYSQL).
+----------------------------------------------------------------------------
+OBTENDO SCHEMA
+Esquema 'tpch' carregado
+pergunta (ou 'sair' para encerrar): quais pedidos foram feitos por clientes da regiao "europe" (INPUT USUARIO)
+
+Pergunta: quais pedidos foram feitos por clientes da regiao "europe"
+SQL Gerado (Gemini):
+SELECT
+  o_orderkey
+FROM orders
+JOIN customer
+  ON o_custkey = c_custkey
+JOIN nation
+  ON c_nationkey = n_nationkey
+JOIN region
+  ON n_regionkey = r_regionkey
+WHERE
+  r_name = 'EUROPE';
+
+SQL Gerado pelo LLM:
+SELECT
+  o_orderkey
+FROM orders
+JOIN customer
+  ON o_custkey = c_custkey
+JOIN nation
+  ON c_nationkey = n_nationkey
+JOIN region
+  ON n_regionkey = r_regionkey
+WHERE
+  r_name = 'EUROPE';
+
+Executando query
+----------------------------------------------------------------------------
+Querry -> 303286
+
+Resultados da Query Executada:
+        o_orderkey
+0            68579
+1            74055
+2           210945
+3           413985
+4          1131267
+...            ...
+303281     4542849
+303282     4646820
+303283     5010434
+303284     5509601
+303285     5918375
+
+[303286 rows x 1 columns]
+
+Deseja fazer outra query? (sim/não): sim
+pergunta (ou 'sair' para encerrar): qual a média do valor total dos itens por pedido
+
+Pergunta: qual a média do valor total dos itens por pedido
+SQL Gerado (Gemini):
+SELECT AVG(o_totalprice) FROM orders
+
+SQL Gerado pelo LLM:
+SELECT AVG(o_totalprice) FROM orders
+
+Executando query
+----------------------------------------------------------------------------
+Querry -> 1
+
+Resultados da Query Executada:
+   AVG(o_totalprice)
+0      151219.537632
+
+Deseja fazer outra query? (sim/não): nao
+Encerrando a aplicação.
