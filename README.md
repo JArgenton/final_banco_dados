@@ -1,33 +1,33 @@
 # Projeto Text-to-SQL com LLMs
 
-Este projeto tem como objetivo a **geração automática de consultas SQL a partir de linguagem natural**, utilizando LLMs como **Google Gemini** e modelos locais **Ollama** (como Qwen). 
+Este projeto tem como objetivo a **geração automática de consultas SQL a partir de linguagem natural**, utilizando LLMs como **Google Gemini** e modelos locais **Ollama** (como Qwen).
 Ele possibilita conexxão com bancos de dados **MySQL** e **PostgreSQL**.
 
---- 
+--- AUTORES: JOÃO PEDRO DE ANDRADE ARGENTON E MATHEUS JOSÈ PEREIRA
 
 ## 🛠️ Requisitos
 
-
-* **Python 3.8 ou superior:** 
-* **Acesso à internet:** Necessário apenas caso use API do Google Gemini.
-* **Ollama instalado e rodando:** NEcessário apenas caso uso de LLM locais [ollama.com](https://ollama.com/).
-* **Banco de dados MySQL ou PostgreSQL:** O projeto precisará se conectar a uma instância de banco de dados para operar.
+- **Python 3.8 ou superior:**
+- **Acesso à internet:** Necessário apenas caso use API do Google Gemini.
+- **Ollama instalado e rodando:** NEcessário apenas caso uso de LLM locais [ollama.com](https://ollama.com/).
+- **Banco de dados MySQL ou PostgreSQL:** O projeto precisará se conectar a uma instância de banco de dados para operar.
 
 ---
 
 ## 📂 Estrutura do Projeto
+
 text2sql/
-├── .env                          
-├── requirements.txt               
-├── main_app.py                    
-├── database/                      
-│   ├── init.py               
-│   ├── connection.py              
-│   └── schema.py                  
-└── text_to_sql/                   
-|   ├── init.py               
-|   ├── prompts.py                
-|   ├── converter
+├── .env  
+├── requirements.txt  
+├── main_app.py  
+├── database/  
+│ ├── init.py  
+│ ├── connection.py  
+│ └── schema.py  
+└── text_to_sql/  
+| ├── init.py  
+| ├── prompts.py  
+| ├── converter
 
 ---
 
@@ -40,13 +40,13 @@ Siga os passos abaixo para configurar e rodar o projeto.
 abra um terminal na raiz do projeto e crie um ambiente virtual com o seguinte comando
 python -m venv venv
 
-### Passo 2: Ativar Ambiente Virtual 
+### Passo 2: Ativar Ambiente Virtual
 
 Windows: venv\Scripts\activate
 
 Linux / macOS: source venv/bin/activate
 
-### Passo 3: instalar dependências 
+### Passo 3: instalar dependências
 
 pip install -r requirements.txt
 
